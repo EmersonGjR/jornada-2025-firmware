@@ -41,8 +41,8 @@ uint8_t sensor = 0;
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
 
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b" // custom UUID
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define SERVICE_UUID "686ae9e3-0b45-485c-90bb-9442f3571af8" // custom UUID
+#define CHARACTERISTIC_UUID "13e827f5-ecde-4927-b5f4-fd3f27ac89e8"
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -74,7 +74,16 @@ void setup_BLE()
     pCharacteristic->addDescriptor(new BLE2902());
     pService->start();
 
-    pServer->getAdvertising()->start();
+
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);  // Helps with iPhone connection
+    pAdvertising->setMinPreferred(0x12);
+
+    // 8. Start advertising
+    BLEDevice::startAdvertising();
+
     Serial.println("BLE server is up and advertising");
 }
 
@@ -179,7 +188,7 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
             break;
         case BSEC_OUTPUT_RAW_GAS:
             Serial.println("\tGas resistance = " + String(output.signal));
-            gas_resistance = "\t " + String(output.signal);
+            gas_resistance = " " + String(output.signal);
             gasDataBuffer += String(gas_resistance) + " ";  // Append gas value
             gasSampleCount++;
 
@@ -193,6 +202,7 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
 
                 // Send the BLE notification
                 pCharacteristic->setValue(gasDataBuffer.c_str());
+                //pCharacteristic->setValue("teste");
                 pCharacteristic->notify();
 
                 Serial.println("BLE Notification Sent with 5 gas values: " + gasDataBuffer);
