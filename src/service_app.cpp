@@ -37,6 +37,9 @@ Bsec2 envSensor[NUM_OF_SENS];
 comm_mux communicationSetup[NUM_OF_SENS];
 uint8_t bsecMemBlock[NUM_OF_SENS][BSEC_INSTANCE_SIZE];
 uint8_t sensor = 0;
+uint8_t index_data_sensor = 0;
+float data_sensor[10];
+float mean;
 
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
@@ -84,7 +87,7 @@ void setup_BLE()
     // 8. Start advertising
     BLEDevice::startAdvertising();
 
-    Serial.println("BLE server is up and advertising");
+    //Serial.println("BLE server is up and advertising");
 }
 
 void setup_bme688()
@@ -149,9 +152,20 @@ void setup_bme688()
         envSensor[i].attachCallback(newDataCallback);
     }
 
-    Serial.println("BSEC library version " +
-                   String(envSensor[0].version.major) + "." + String(envSensor[0].version.minor) + "." + String(envSensor[0].version.major_bugfix) + "." + String(envSensor[0].version.minor_bugfix));
+    //Serial.println("BSEC library version " +
+             //      String(envSensor[0].version.major) + "." + String(envSensor[0].version.minor) + "." + String(envSensor[0].version.major_bugfix) + "." + String(envSensor[0].version.minor_bugfix));
 }
+/*
+ Take multiple samples in the same heater step and average them.
+
+*/
+float avg(float* values, int count) {
+    float sum = 0;
+    for (int i = 0; i < count; i++)
+        sum += values[i];
+    return sum / count;
+}
+
 
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bsec)
 {
@@ -161,8 +175,8 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
         return;
     }
 
-    Serial.println("BSEC outputs:\n\tSensor num = " + String(sensor));
-    Serial.println("\tTime stamp = " + String((int)(outputs.output[0].time_stamp / INT64_C(1000000))));
+   // Serial.println("BSEC outputs:\n\tSensor num = " + String(sensor));
+    //Serial.println("\tTime stamp = " + String((int)(outputs.output[0].time_stamp / INT64_C(1000000))));
     String value_notify;
     String gas_resistance ;
     for (uint8_t i = 0; i < outputs.nOutputs; i++)
@@ -170,13 +184,13 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
         const bsecData output = outputs.output[i];
         switch (output.sensor_id)
         {
-        case BSEC_OUTPUT_IAQ:
-            Serial.println("\tIAQ = " + String(output.signal));
-            Serial.println("\tIAQ accuracy = " + String((int)output.accuracy));
+        /*case BSEC_OUTPUT_IAQ:
+            //Serial.println("\tIAQ = " + String(output.signal));
+            //Serial.println("\tIAQ accuracy = " + String((int)output.accuracy));
             break;
         case BSEC_OUTPUT_RAW_TEMPERATURE:
-            Serial.println("\tTemperature = " + String(output.signal));
-            value_notify = "\tTemperature : " + String(output.signal);
+           // Serial.println("\tTemperature = " + String(output.signal));
+            //value_notify = "\tTemperature : " + String(output.signal);
             break;
         case BSEC_OUTPUT_RAW_PRESSURE:
             Serial.println("\tPressure = " + String(output.signal));
@@ -186,34 +200,15 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
             Serial.println("\tHumidity = " + String(output.signal));
             value_notify = "\tHumidity : " + String(output.signal);
             break;
+            */
         case BSEC_OUTPUT_RAW_GAS:
             Serial.println("\tGas resistance = " + String(output.signal));
-            gas_resistance = " " + String(output.signal);
-            gasDataBuffer += String(gas_resistance) + " ";  // Append gas value
-            gasSampleCount++;
-
-            if (gasSampleCount >= GAS_SAMPLE_THRESHOLD)
-            {
-                // Remove trailing comma if needed
-                if (gasDataBuffer.endsWith(","))
-                {
-                    gasDataBuffer.remove(gasDataBuffer.length() - 1);
-                }
-
-                // Send the BLE notification
-                pCharacteristic->setValue(gasDataBuffer.c_str());
-                //pCharacteristic->setValue("teste");
-                pCharacteristic->notify();
-
-                Serial.println("BLE Notification Sent with 5 gas values: " + gasDataBuffer);
-
-                // Clear buffer and reset count
-                gasDataBuffer = "";
-                gasSampleCount = 0;
-            }
-
+            //Serial.println(String(output.signal));
+            data_sensor[index_data_sensor] = output.signal;
+            index_data_sensor++;
+            
             break;
-        case BSEC_OUTPUT_STABILIZATION_STATUS:
+        /*case BSEC_OUTPUT_STABILIZATION_STATUS:
             Serial.println("\tStabilization status = " + String(output.signal));
             break;
         case BSEC_OUTPUT_RUN_IN_STATUS:
@@ -240,31 +235,69 @@ void newDataCallback(const bme68xData data, const bsecOutputs outputs, Bsec2 bse
         case BSEC_OUTPUT_COMPENSATED_GAS:
             Serial.println("\tCompensated gas = " + String(output.signal));
             break;
-
+            */
         default:
             break;
         }
     }
+    if(index_data_sensor == 7)
+    {
+       mean = avg(data_sensor, 8);
+
+/*        for(uint8_t i = 0; i < 10; i++)
+        {
+          Serial.println(String(data_sensor[i]));
+        }
+          */
+         //Serial.print("mean   ");
+         Serial.println(mean);
+        index_data_sensor = 0;
+            gas_resistance = " " + String(mean);
+            gasDataBuffer += String(gas_resistance) + " ";  // Append gas value
+            gasSampleCount++;
+            
+
+            if (gasSampleCount >= GAS_SAMPLE_THRESHOLD)
+            {
+                // Remove trailing comma if needed
+                if (gasDataBuffer.endsWith(","))
+                {
+                    gasDataBuffer.remove(gasDataBuffer.length() - 1);
+                }
+
+                // Send the BLE notification
+                pCharacteristic->setValue(gasDataBuffer.c_str());
+                //pCharacteristic->setValue("teste");
+                pCharacteristic->notify();
+
+                Serial.println("BLE Notification Sent with 5 gas values: " + gasDataBuffer);
+
+                // Clear buffer and reset count
+                gasDataBuffer = "";
+                gasSampleCount = 0;
+            }
+    }
+    
 }
 
 void checkBsecStatus(Bsec2 bsec)
 {
     if (bsec.status < BSEC_OK)
     {
-        Serial.println("BSEC error code : " + String(bsec.status));
+        //Serial.println("BSEC error code : " + String(bsec.status));
     }
     else if (bsec.status > BSEC_OK)
     {
-        Serial.println("BSEC warning code : " + String(bsec.status));
+       // Serial.println("BSEC warning code : " + String(bsec.status));
     }
 
     if (bsec.sensor.status < BME68X_OK)
     {
-        Serial.println("BME68X error code : " + String(bsec.sensor.status));
+       // Serial.println("BME68X error code : " + String(bsec.sensor.status));
     }
     else if (bsec.sensor.status > BME68X_OK)
     {
-        Serial.println("BME68X warning code : " + String(bsec.sensor.status));
+       // Serial.println("BME68X warning code : " + String(bsec.sensor.status));
     }
 }
 
